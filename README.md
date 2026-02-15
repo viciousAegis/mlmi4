@@ -1,6 +1,6 @@
-# MLMI4 - Flow Matching on CIFAR-10
+# MLMI4 - Flow Matching on CIFAR-10 and ImageNet
 
-Training script for Flow Matching models on CIFAR-10 dataset with support for both Optimal Transport (OT) and diffusion probability paths.
+Training script for Flow Matching models with support for both Optimal Transport (OT) and diffusion probability paths on CIFAR-10 and ImageNet datasets.
 
 ## Usage
 
@@ -14,9 +14,36 @@ Everything should be installed in a local `.venv` directory, and work out of the
 
 ### Basic Training
 
-Run with default settings (OT path):
+Run with default settings (CIFAR-10, OT path):
 ```bash
 python training.py
+```
+
+### Dataset Selection
+
+Choose between CIFAR-10 or ImageNet:
+
+```bash
+# Train on CIFAR-10 (default, 32x32)
+python training.py --dataset cifar10
+
+# Train on ImageNet (64x64 by default)
+python training.py --dataset imagenet --data-root /path/to/imagenet
+
+# Train on ImageNet with custom image size
+python training.py --dataset imagenet --data-root /path/to/imagenet --image-size 128
+```
+
+**ImageNet Setup:**
+ImageNet requires the standard directory structure:
+```
+data_root/
+  train/
+    n01440764/
+      *.JPEG
+  val/
+    n01440764/
+      *.JPEG
 ```
 
 ### Path Selection
@@ -85,6 +112,9 @@ The integration logs:
 
 - `--config`: Path to YAML config file
 - `--force-cpu`: Force CPU usage
+- `--dataset`: Dataset - "cifar10" or "imagenet" (default: "cifar10")
+- `--data-root`: Data directory path (default: "./data")
+- `--image-size`: Image size for ImageNet (default: 64)
 - `--batch-size`: Per-step batch size
 - `--effective-batch`: Target effective batch size
 - `--val-size`: Validation set size

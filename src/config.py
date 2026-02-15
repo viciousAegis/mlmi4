@@ -11,6 +11,9 @@ class TrainConfig:
     force_cpu: bool = False
 
     # data
+    dataset: str = "cifar10"           # "cifar10" or "imagenet"
+    data_root: str = "./data"          # data directory
+    image_size: int = 64               # image size (for ImageNet)
     batch_size: int = 64               # per-step batch
     effective_batch: int = 256         # target effective batch
     val_size: int = 5000
@@ -104,6 +107,13 @@ def parse_args() -> argparse.Namespace:
                         help='Force CPU usage')
     
     # Data
+    parser.add_argument('--dataset', type=str, default=None,
+                        choices=['cifar10', 'imagenet'],
+                        help='Dataset: "cifar10" or "imagenet"')
+    parser.add_argument('--data-root', type=str, default=None,
+                        help='Data directory path')
+    parser.add_argument('--image-size', type=int, default=None,
+                        help='Image size for ImageNet (default: 64)')
     parser.add_argument('--batch-size', type=int, default=None,
                         help='Per-step batch size')
     parser.add_argument('--effective-batch', type=int, default=None,

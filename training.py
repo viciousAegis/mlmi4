@@ -7,8 +7,8 @@ from dataclasses import asdict
 import torch
 import wandb
 
-from src.datasets import get_cifar10_loaders
-from src.paths import ot_path_and_target
+from src.datasets import get_dataloaders
+from src.paths import get_path_and_target
 from src.models import UNetCIFAR
 from src.config import TrainConfig, parse_args, load_config
 from src.utils import EMA, pick_device, lr_at_step, evaluate_loss, save_ckpt
@@ -57,10 +57,18 @@ def main():
             f"[warn] effective_batch not divisible by batch_size; using accum_steps={accum_steps}"
         )
 
-    loaders = get_cifar10_loaders(
+    loaders = get_dataloaders(
+        dataset=cfg.dataset,
+        root=cfg.data_root,
         batch_size=cfg.batch_size,
+        image_size=cfg.image_size,
         val_size=cfg.val_size,
         num_workers=cfg.num_workers,
+    )
+
+    print(f"Dataset: {cfg.dataset}")
+    print(
+        f"Image size: {loaders.image_size}x{loaders.image_size}, Channels: {loaders.num_channels}"
     )
 
     net = UNetCIFAR(
@@ -103,7 +111,9 @@ def main():
                 x1, _ = next(train_it)
 
             x1 = x1.to(device, non_blocking=(device == "cuda"))
-            t, x_t, u_t = ot_path_and_target(x1, sigma_min=cfg.sigma_min)
+            t, x_t, u_t = get_path_and_target(
+                x1, path_type=cfg.path_type, sigma_min=cfg.sigma_min, s=cfg.diffusion_s
+            )
 
             if use_amp:
                 with autocast("cuda", dtype=torch.float16):
@@ -147,7 +157,13 @@ def main():
         # validation
         if step % cfg.val_every == 0:
             val_loss = evaluate_loss(
-                net, loaders.val, device, cfg.sigma_min, max_batches=20
+                net,
+                loaders.val,
+                device,
+                cfg.path_type,
+                cfg.sigma_min,
+                cfg.diffusion_s,
+                max_batches=20,
             )
             print(f"           | val_loss {val_loss:.6f}")
 

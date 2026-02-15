@@ -4,6 +4,9 @@
 force_cpu: false
 
 # Data settings
+dataset: "cifar10"      # "cifar10" or "imagenet"
+data_root: "./data"     # data directory
+image_size: 32          # image size (for ImageNet)
 batch_size: 64
 effective_batch: 256
 val_size: 5000
