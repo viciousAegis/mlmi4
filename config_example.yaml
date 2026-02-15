@@ -1,0 +1,48 @@
+# Example training configuration file for CIFAR-10 Flow Matching
+
+# Device settings
+force_cpu: false
+
+# Data settings
+batch_size: 64
+effective_batch: 256
+val_size: 5000
+num_workers: 4
+
+# Training length
+total_steps: 50000
+log_every: 100
+val_every: 2000
+ckpt_every: 5000
+
+# Optimization
+lr: 0.0005
+warmup_steps: 45000
+poly_power: 2.0
+weight_decay: 0.0
+
+# FM / OT path
+sigma_min: 0.01
+
+# Model architecture
+base_ch: 256
+channel_mults: [1, 2, 2, 2]
+num_res_blocks: 2
+attn_resolutions: [16]
+num_heads: 4
+dropout: 0.0
+
+# AMP / EMA
+use_amp: true
+ema: true
+ema_decay: 0.9999
+
+# Weights & Biases (W&B) logging
+use_wandb: false
+wandb_project: "mlmi4-cifar10"
+# wandb_entity: "your-team-name"  # Optional: your W&B team/entity
+# wandb_name: "experiment-name"   # Optional: custom run name
+# wandb_tags: ["baseline", "v1"]  # Optional: tags for organizing runs
+
+# Output
+out_dir: "./runs/fm_ot_cifar10"
