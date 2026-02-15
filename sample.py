@@ -28,11 +28,15 @@ def load_ckpt(ckpt_path: str, device: str):
 
 @torch.no_grad()
 def dopri5_sample(
-    net: UNetCIFAR, n: int = 64, device: str = "cuda", atol=1e-5, rtol=1e-5
+    net: UNetCIFAR, n: int = 64, device: str = "cuda", atol=1e-5, rtol=1e-5, return_trajectory=False, num_steps=10
 ):
     """
     Paper-style ODE solver using torchdiffeq.
     Install: pip install torchdiffeq
+    
+    Args:
+        return_trajectory: if True, return states at multiple time points
+        num_steps: number of time points to save (only used if return_trajectory=True)
     """
     from torchdiffeq import odeint
 
@@ -48,10 +52,16 @@ def dopri5_sample(
             return net(x, t_batch)
 
     vf = VF().to(device)
-    ts = torch.tensor([0.0, 1.0], device=device)
-    x01 = odeint(vf, x0, ts, method="dopri5", atol=atol, rtol=rtol)
-    x1 = x01[-1]
-    return x1
+    
+    if return_trajectory:
+        # Return states at multiple time points
+        ts = torch.linspace(0.0, 1.0, num_steps, device=device)
+        trajectory = odeint(vf, x0, ts, method="dopri5", atol=atol, rtol=rtol)
+        return trajectory  # shape: (num_steps, n, 3, 32, 32)
+    else:
+        ts = torch.tensor([0.0, 1.0], device=device)
+        x01 = odeint(vf, x0, ts, method="dopri5", atol=atol, rtol=rtol)
+        return x01[-1]
 
 
 def to_img(x: torch.Tensor) -> torch.Tensor:
@@ -92,6 +102,17 @@ def main():
         default=None,
         help="Device to use (cuda/cpu). Defaults to cuda if available",
     )
+    parser.add_argument(
+        "--show-trajectory",
+        action="store_true",
+        help="Show time evolution grid (rows=samples, cols=time)",
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=10,
+        help="Number of time steps to show in trajectory (default: 10)",
+    )
 
     args = parser.parse_args()
 
@@ -103,13 +124,34 @@ def main():
     print("checkpoint step:", step)
 
     # Use torchdiffeq dopri5 solver
-    x = dopri5_sample(net, n=args.n, device=device, atol=args.atol, rtol=args.rtol)
-
-    imgs = to_img(x)
-    grid = make_grid(imgs, nrow=8)
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    save_image(grid, args.output)
-    print("saved:", args.output)
+    if args.show_trajectory:
+        # Generate trajectory visualization
+        trajectory = dopri5_sample(
+            net, n=args.n, device=device, atol=args.atol, rtol=args.rtol, 
+            return_trajectory=True, num_steps=args.num_steps
+        )
+        # trajectory shape: (num_steps, n, 3, 32, 32)
+        
+        # Rearrange to (n, num_steps, 3, 32, 32) then flatten to (n * num_steps, 3, 32, 32)
+        trajectory = trajectory.transpose(0, 1)  # (n, num_steps, 3, 32, 32)
+        trajectory_flat = trajectory.reshape(-1, *trajectory.shape[2:])  # (n * num_steps, 3, 32, 32)
+        
+        # Convert to images
+        imgs = to_img(trajectory_flat)
+        
+        # Make grid: each row is one sample's trajectory through time
+        grid = make_grid(imgs, nrow=args.num_steps)
+        
+        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        save_image(grid, args.output)
+        print(f"saved: {args.output} (trajectory with {args.num_steps} time steps, {args.n} samples)")
+    else:
+        x1 = dopri5_sample(net, n=args.n, device=device, atol=args.atol, rtol=args.rtol)
+        imgs = to_img(x1)
+        grid = make_grid(imgs, nrow=8)
+        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        save_image(grid, args.output)
+        print("saved:", args.output)
 
 
 if __name__ == "__main__":
