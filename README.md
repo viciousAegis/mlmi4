@@ -4,6 +4,14 @@ Training script for Flow Matching models on CIFAR-10 dataset.
 
 ## Usage
 
+### Installation
+This project uses UV to manage dependencies. To run, first install UV and then set up the environment:
+```bash
+pip install uv
+uv sync
+```
+Everything should be installed in a local `.venv` directory, and work out of the box.
+
 ### Basic Training
 
 Run with default settings:
