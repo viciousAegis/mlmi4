@@ -8,7 +8,7 @@ import torch
 import wandb
 
 from src.datasets import get_cifar10_loaders
-from src.paths import sample_with_ot
+from src.paths import ot_path_and_target
 from src.models import UNetCIFAR
 from src.config import TrainConfig, parse_args, load_config
 from src.utils import EMA, pick_device, lr_at_step, evaluate_loss, save_ckpt
@@ -53,7 +53,9 @@ def main():
 
     accum_steps = max(1, cfg.effective_batch // cfg.batch_size)
     if cfg.effective_batch % cfg.batch_size != 0:
-        print(f"[warn] effective_batch not divisible by batch_size; using accum_steps={accum_steps}")
+        print(
+            f"[warn] effective_batch not divisible by batch_size; using accum_steps={accum_steps}"
+        )
 
     loaders = get_cifar10_loaders(
         batch_size=cfg.batch_size,
@@ -70,7 +72,9 @@ def main():
         dropout=cfg.dropout,
     ).to(device)
 
-    opt = torch.optim.Adam(net.parameters(), lr=cfg.lr, betas=cfg.betas, weight_decay=cfg.weight_decay)
+    opt = torch.optim.Adam(
+        net.parameters(), lr=cfg.lr, betas=cfg.betas, weight_decay=cfg.weight_decay
+    )
 
     use_amp = cfg.use_amp and (device == "cuda")
     autocast = torch.amp.autocast
@@ -99,7 +103,7 @@ def main():
                 x1, _ = next(train_it)
 
             x1 = x1.to(device, non_blocking=(device == "cuda"))
-            t, x_t, u_t = sample_with_ot(x1, sigma_min=cfg.sigma_min)
+            t, x_t, u_t = ot_path_and_target(x1, sigma_min=cfg.sigma_min)
 
             if use_amp:
                 with autocast("cuda", dtype=torch.float16):
@@ -126,39 +130,47 @@ def main():
         if step % cfg.log_every == 0 or step == 1:
             dt = time.time() - t0
             steps_per_s = step / max(1e-6, dt)
-            print(f"step {step:06d} | lr {lr:.3e} | train_loss {total_loss:.6f} | {steps_per_s:.2f} steps/s")
-            
+            print(
+                f"step {step:06d} | lr {lr:.3e} | train_loss {total_loss:.6f} | {steps_per_s:.2f} steps/s"
+            )
+
             if cfg.use_wandb:
-                wandb.log({
-                    "train/loss": total_loss,
-                    "train/lr": lr,
-                    "train/steps_per_s": steps_per_s,
-                    "step": step,
-                })
+                wandb.log(
+                    {
+                        "train/loss": total_loss,
+                        "train/lr": lr,
+                        "train/steps_per_s": steps_per_s,
+                        "step": step,
+                    }
+                )
 
         # validation
         if step % cfg.val_every == 0:
-            val_loss = evaluate_loss(net, loaders.val, device, cfg.sigma_min, max_batches=20)
+            val_loss = evaluate_loss(
+                net, loaders.val, device, cfg.sigma_min, max_batches=20
+            )
             print(f"           | val_loss {val_loss:.6f}")
-            
+
             if cfg.use_wandb:
-                wandb.log({
-                    "val/loss": val_loss,
-                    "step": step,
-                })
+                wandb.log(
+                    {
+                        "val/loss": val_loss,
+                        "step": step,
+                    }
+                )
 
         # checkpoint
         if step % cfg.ckpt_every == 0 or step == cfg.total_steps:
             ckpt_path = os.path.join(cfg.out_dir, f"ckpt_step{step}.pt")
             save_ckpt(ckpt_path, net, opt, step, ema)
             print(f"saved: {ckpt_path}")
-            
+
             # # Save checkpoint to wandb as artifact
             # if cfg.use_wandb:
             #     artifact = wandb.Artifact(f"model-step{step}", type="model")
             #     artifact.add_file(ckpt_path)
             #     wandb.log_artifact(artifact)
-    
+
     if cfg.use_wandb:
         wandb.finish()
 

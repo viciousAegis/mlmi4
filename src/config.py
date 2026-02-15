@@ -30,7 +30,9 @@ class TrainConfig:
     weight_decay: float = 0.0
 
     # FM / OT path
-    sigma_min: float = 0.01
+    path_type: str = "ot"            # "ot" or "diffusion"
+    sigma_min: float = 0.01            # for OT path
+    diffusion_s: float = 0.008         # for diffusion path
 
     # model
     base_ch: int = 256
@@ -132,8 +134,13 @@ def parse_args() -> argparse.Namespace:
                         help='Weight decay')
     
     # FM / OT path
+    parser.add_argument('--path-type', type=str, default=None,
+                        choices=['ot', 'diffusion'],
+                        help='Path type: "ot" or "diffusion"')
     parser.add_argument('--sigma-min', type=float, default=None,
-                        help='Minimum sigma for noise schedule')
+                        help='Minimum sigma for OT path')
+    parser.add_argument('--diffusion-s', type=float, default=None,
+                        help='Schedule parameter s for diffusion path')
     
     # Model
     parser.add_argument('--base-ch', type=int, default=None,

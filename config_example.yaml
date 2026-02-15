@@ -22,7 +22,9 @@ poly_power: 2.0
 weight_decay: 0.0
 
 # FM / OT path
-sigma_min: 0.01
+path_type: "ot"          # "ot" or "diffusion"
+sigma_min: 0.01          # for OT path
+diffusion_s: 0.008       # for diffusion path
 
 # Model architecture
 base_ch: 256

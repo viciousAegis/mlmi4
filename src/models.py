@@ -17,7 +17,9 @@ class SinusoidalTimeEmbedding(nn.Module):
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         half = self.dim // 2
         freqs = torch.exp(
-            -math.log(10000) * torch.arange(0, half, device=t.device, dtype=t.dtype) / (half - 1)
+            -math.log(10000)
+            * torch.arange(0, half, device=t.device, dtype=t.dtype)
+            / (half - 1)
         )
         args = t[:, None] * freqs[None, :]
         emb = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
@@ -85,13 +87,17 @@ class AttentionBlock(nn.Module):
         q, k, v = self.qkv(h).chunk(3, dim=1)
 
         T = H * W
-        q = q.view(B, self.num_heads, self.head_dim, T).transpose(2, 3)  # (B, heads, T, D)
-        k = k.view(B, self.num_heads, self.head_dim, T)                  # (B, heads, D, T)
-        v = v.view(B, self.num_heads, self.head_dim, T).transpose(2, 3)  # (B, heads, T, D)
+        q = q.view(B, self.num_heads, self.head_dim, T).transpose(
+            2, 3
+        )  # (B, heads, T, D)
+        k = k.view(B, self.num_heads, self.head_dim, T)  # (B, heads, D, T)
+        v = v.view(B, self.num_heads, self.head_dim, T).transpose(
+            2, 3
+        )  # (B, heads, T, D)
 
         scale = 1.0 / math.sqrt(self.head_dim)
-        attn = torch.softmax((q @ k) * scale, dim=-1)                    # (B, heads, T, T)
-        out = attn @ v                                                   # (B, heads, T, D)
+        attn = torch.softmax((q @ k) * scale, dim=-1)  # (B, heads, T, T)
+        out = attn @ v  # (B, heads, T, D)
 
         out = out.transpose(2, 3).contiguous().view(B, C, H, W)
         out = self.proj(out)
@@ -170,11 +176,13 @@ class UNetCIFAR(nn.Module):
                 self.downsamples.append(nn.Identity())
 
         # Middle
-        self.mid = nn.ModuleList([
-            ResBlock(ch, ch, t_ch, dropout),
-            AttentionBlock(ch, num_heads=num_heads),
-            ResBlock(ch, ch, t_ch, dropout),
-        ])
+        self.mid = nn.ModuleList(
+            [
+                ResBlock(ch, ch, t_ch, dropout),
+                AttentionBlock(ch, num_heads=num_heads),
+                ResBlock(ch, ch, t_ch, dropout),
+            ]
+        )
 
         # Up: per level modules
         self.up_levels = nn.ModuleList()

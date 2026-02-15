@@ -1,6 +1,6 @@
 # MLMI4 - Flow Matching on CIFAR-10
 
-Training script for Flow Matching models on CIFAR-10 dataset.
+Training script for Flow Matching models on CIFAR-10 dataset with support for both Optimal Transport (OT) and diffusion probability paths.
 
 ## Usage
 
@@ -14,10 +14,26 @@ Everything should be installed in a local `.venv` directory, and work out of the
 
 ### Basic Training
 
-Run with default settings:
+Run with default settings (OT path):
 ```bash
 python training.py
 ```
+
+### Path Selection
+
+Choose between Optimal Transport (OT) or diffusion paths:
+
+```bash
+# Train with OT path (default)
+python training.py --path-type ot
+
+# Train with diffusion path
+python training.py --path-type diffusion
+```
+
+The path type determines how the model learns to transform noise to data:
+- **OT (Optimal Transport)**: Uses a Gaussian probability path with linear interpolation
+- **Diffusion**: Uses a VP-diffusion path with cosine noise schedule
 
 ### Using Config File
 
@@ -81,7 +97,9 @@ The integration logs:
 - `--warmup-steps`: Warmup steps
 - `--poly-power`: Polynomial decay power
 - `--weight-decay`: Weight decay
-- `--sigma-min`: Minimum sigma for noise schedule
+- `--path-type`: Path type - "ot" or "diffusion" (default: "ot")
+- `--sigma-min`: Minimum sigma for OT path (default: 0.01)
+- `--diffusion-s`: Schedule parameter for diffusion path (default: 0.008)
 - `--base-ch`: Base channel size
 - `--num-res-blocks`: Number of residual blocks
 - `--num-heads`: Number of attention heads
