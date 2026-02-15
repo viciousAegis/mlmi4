@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from src.sample import sample_with_ot
+from src.paths import sample_with_ot
 from src.config import TrainConfig
 
 

@@ -8,7 +8,7 @@ import torch
 import wandb
 
 from src.datasets import get_cifar10_loaders
-from src.sample import sample_with_ot
+from src.paths import sample_with_ot
 from src.models import UNetCIFAR
 from src.config import TrainConfig, parse_args, load_config
 from src.utils import EMA, pick_device, lr_at_step, evaluate_loss, save_ckpt
