@@ -1,5 +1,4 @@
 import torch
-import math
 
 
 @torch.no_grad()
@@ -44,19 +43,27 @@ def ot_path_and_target(x1: torch.Tensor, sigma_min: float = 0.01):
     return t, x_t, u_t
 
 
-def alpha_bar_cosine(t: torch.Tensor, s: float = 0.008) -> torch.Tensor:
+def alpha_bar_vp(t: torch.Tensor, beta_min: float = 0.1, beta_max: float = 20.0) -> torch.Tensor:
     """
-    Cosine schedule alpha_bar(t) in (0,1], t in [0,1].
+    VP linear-beta schedule alpha_bar(t) as used in the paper (Appendix E.1).
+    beta(s) = beta_min + (beta_max - beta_min) * s
+    alpha_bar(t) = exp(-0.5 * integral_0^t beta(s) ds)
+                 = exp(-0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t^2))
     """
-    # ensure float
-    x = (t + s) / (1.0 + s) * (math.pi / 2.0)
-    return torch.cos(x).pow(2)
+    log_abar = -0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t ** 2)
+    return torch.exp(log_abar)
 
 
-def diffusion_path_and_target(x1: torch.Tensor, s: float = 0.008):
+def diffusion_path_and_target(
+    x1: torch.Tensor, beta_min: float = 0.1, beta_max: float = 20.0, eps_t: float = 1e-5
+):
     """
-    VP-diffusion probability path:
-      x_t = sqrt(alpha_bar(t)) * x1 + sqrt(1-alpha_bar(t)) * eps
+    VP-diffusion probability path (paper Appendix E.1):
+      beta(t) = beta_min + (beta_max - beta_min) * t
+      alpha_bar(t) = exp(-0.5 * int_0^t beta(s) ds)
+      x_t = sqrt(alpha_bar(t)) * x1 + sqrt(1 - alpha_bar(t)) * eps
+
+    Time is sampled from [0, 1-eps_t] to avoid numerical issues at t=1.
 
     Returns:
       t: (B,)
@@ -68,16 +75,16 @@ def diffusion_path_and_target(x1: torch.Tensor, s: float = 0.008):
     device = x1.device
     dtype = x1.dtype
 
-    # sample t and eps
-    t = torch.rand(B, device=device, dtype=dtype)
+    # sample t in [0, 1-eps_t] and eps
+    t = torch.rand(B, device=device, dtype=dtype) * (1.0 - eps_t)
     eps = torch.randn_like(x1)
 
-    # We will use autograd to compute d/dt of mu_t and sigma_t
-    t_req = t.detach().clone().requires_grad_(True)  # (B,)
+    # Use autograd to compute d/dt of mu_scale and sig
+    t_req = t.detach().clone().requires_grad_(True)
 
-    abar = alpha_bar_cosine(t_req, s=s)  # (B,)
-    mu_scale = torch.sqrt(abar)  # (B,)
-    sig = torch.sqrt(1.0 - abar)  # (B,)
+    abar = alpha_bar_vp(t_req, beta_min=beta_min, beta_max=beta_max)
+    mu_scale = torch.sqrt(abar)
+    sig = torch.sqrt(1.0 - abar)
 
     # broadcast
     mu_scale_ = mu_scale[:, None, None, None]
@@ -87,7 +94,6 @@ def diffusion_path_and_target(x1: torch.Tensor, s: float = 0.008):
     x_t = mu_t + sig_ * eps
 
     # Compute d(mu_scale)/dt and d(sig)/dt via autograd
-    # dmu_scale/dt: (B,), dsig/dt: (B,)
     dmu_scale = torch.autograd.grad(
         mu_scale.sum(), t_req, create_graph=False, retain_graph=True
     )[0]
@@ -99,12 +105,12 @@ def diffusion_path_and_target(x1: torch.Tensor, s: float = 0.008):
     # u_t = dmu + (dsig/sig) * (x_t - mu_t)
     u_t = dmu + (dsig_ / sig_) * (x_t - mu_t)
 
-    # detach t to feed model (no need to backprop through t sampling)
     return t.detach(), x_t.detach(), u_t.detach()
 
 
 def get_path_and_target(
-    x1: torch.Tensor, path_type: str = "ot", sigma_min: float = 0.01, s: float = 0.008
+    x1: torch.Tensor, path_type: str = "ot", sigma_min: float = 0.01,
+    beta_min: float = 0.1, beta_max: float = 20.0, eps_t: float = 1e-5,
 ):
     """
     Unified interface for path selection.
@@ -113,7 +119,9 @@ def get_path_and_target(
         x1: data batch
         path_type: "ot" or "diffusion"
         sigma_min: for OT path
-        s: for diffusion path
+        beta_min: for VP diffusion path
+        beta_max: for VP diffusion path
+        eps_t: time clipping for diffusion path
 
     Returns:
         t, x_t, u_t
@@ -121,7 +129,7 @@ def get_path_and_target(
     if path_type == "ot":
         return ot_path_and_target(x1, sigma_min=sigma_min)
     elif path_type == "diffusion":
-        return diffusion_path_and_target(x1, s=s)
+        return diffusion_path_and_target(x1, beta_min=beta_min, beta_max=beta_max, eps_t=eps_t)
     else:
         raise ValueError(f"Unknown path_type: {path_type}. Use 'ot' or 'diffusion'.")
 
@@ -146,7 +154,7 @@ def main():
     print("mean |x_t2 - x1| (t≈1):", (x_t2 - x1).abs().mean().item())
 
     # check diffusion path
-    t3, x_t3, u_t3 = diffusion_path_and_target(x1, s=0.008)
+    t3, x_t3, u_t3 = diffusion_path_and_target(x1)
     print("diffusion t:", t3.shape, t3.min().item(), t3.max().item())
     print(
         "diffusion x_t:", x_t3.shape, x_t3.dtype, float(x_t3.min()), float(x_t3.max())

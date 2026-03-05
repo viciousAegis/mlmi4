@@ -35,7 +35,9 @@ class TrainConfig:
     # FM / OT path
     path_type: str = "ot"            # "ot" or "diffusion"
     sigma_min: float = 0.01            # for OT path
-    diffusion_s: float = 0.008         # for diffusion path
+    beta_min: float = 0.1             # for VP diffusion path
+    beta_max: float = 20.0            # for VP diffusion path
+    eps_t: float = 1e-5               # time clipping for diffusion path
 
     # model
     base_ch: int = 256
@@ -149,8 +151,12 @@ def parse_args() -> argparse.Namespace:
                         help='Path type: "ot" or "diffusion"')
     parser.add_argument('--sigma-min', type=float, default=None,
                         help='Minimum sigma for OT path')
-    parser.add_argument('--diffusion-s', type=float, default=None,
-                        help='Schedule parameter s for diffusion path')
+    parser.add_argument('--beta-min', type=float, default=None,
+                        help='VP diffusion beta_min (default: 0.1)')
+    parser.add_argument('--beta-max', type=float, default=None,
+                        help='VP diffusion beta_max (default: 20.0)')
+    parser.add_argument('--eps-t', type=float, default=None,
+                        help='Time clipping for diffusion path (default: 1e-5)')
     
     # Model
     parser.add_argument('--base-ch', type=int, default=None,

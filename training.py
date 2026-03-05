@@ -112,7 +112,8 @@ def main():
 
             x1 = x1.to(device, non_blocking=(device == "cuda"))
             t, x_t, u_t = get_path_and_target(
-                x1, path_type=cfg.path_type, sigma_min=cfg.sigma_min, s=cfg.diffusion_s
+                x1, path_type=cfg.path_type, sigma_min=cfg.sigma_min,
+                beta_min=cfg.beta_min, beta_max=cfg.beta_max, eps_t=cfg.eps_t,
             )
 
             if use_amp:
@@ -156,15 +157,7 @@ def main():
 
         # validation
         if step % cfg.val_every == 0:
-            val_loss = evaluate_loss(
-                net,
-                loaders.val,
-                device,
-                cfg.path_type,
-                cfg.sigma_min,
-                cfg.diffusion_s,
-                max_batches=20,
-            )
+            val_loss = evaluate_loss(net, loaders.val, device, cfg, max_batches=20)
             print(f"           | val_loss {val_loss:.6f}")
 
             if cfg.use_wandb:
