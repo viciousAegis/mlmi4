@@ -66,23 +66,22 @@ def compute_log_likelihood(net: nn.Module, x1: torch.Tensor, device: str,
     # We integrate from t=1 backward to t=0
     state0 = torch.cat([x1.reshape(B, -1), torch.zeros(B, 1, device=device)], dim=1)
     flat_dim = x1.shape[1] * x1.shape[2] * x1.shape[3]
-    noise_flat = noise.reshape(B, -1)
 
     class AugmentedVF(nn.Module):
         def forward(self, t, state):
-            x_flat = state[:, :flat_dim]
-            x = x_flat.reshape(x1.shape)
-            t_batch = torch.full((B,), float(t), device=device, dtype=x.dtype)
-            v, div_v = hutchinson_divergence(net, x, t_batch,
-                                             noise.to(x.dtype))
+            with torch.enable_grad():
+                x_flat = state[:, :flat_dim]
+                x = x_flat.reshape(x1.shape)
+                t_batch = torch.full((B,), float(t), device=device, dtype=x.dtype)
+                v, div_v = hutchinson_divergence(net, x, t_batch,
+                                                 noise.to(x.dtype))
             return torch.cat([v.reshape(B, -1), -div_v[:, None]], dim=1)
 
     vf = AugmentedVF().to(device)
     # Integrate backward: t=1 -> t=0
     ts = torch.tensor([1.0, 0.0], device=device)
 
-    with torch.no_grad():
-        result = odeint(vf, state0, ts, method="dopri5", atol=atol, rtol=rtol)
+    result = odeint(vf, state0, ts, method="dopri5", atol=atol, rtol=rtol)
 
     final_state = result[-1]
     x0 = final_state[:, :flat_dim]

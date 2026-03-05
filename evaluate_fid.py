@@ -14,7 +14,6 @@ import tempfile
 
 import torch
 import numpy as np
-from torchvision.utils import save_image
 from PIL import Image
 
 from sample import load_ckpt, to_img
@@ -88,15 +87,31 @@ def compute_fid(sample_dir: str, dataset: str, data_root: str, image_size: int,
 
 
 def _extract_real_images(dataset: str, data_root: str, image_size: int, out_dir: str):
-    """Extract real dataset images as PNGs for FID computation."""
-    from src.datasets import get_dataloaders
+    """Extract real dataset images (unaugmented) as PNGs for FID computation."""
+    from torchvision import datasets as tv_datasets, transforms
+    from src.datasets import normalize_to_minus_one_one
+    from torch.utils.data import DataLoader
 
     os.makedirs(out_dir, exist_ok=True)
-    loaders = get_dataloaders(dataset=dataset, root=data_root, batch_size=256,
-                              val_size=1, num_workers=4, image_size=image_size)
+
+    # Build a clean (no augmentation) transform
+    if dataset == "cifar10":
+        tf = transforms.Compose([transforms.ToTensor(), transforms.Lambda(normalize_to_minus_one_one)])
+        ds = tv_datasets.CIFAR10(root=data_root, train=True, download=True, transform=tf)
+    elif dataset == "imagenet":
+        tf = transforms.Compose([
+            transforms.Resize(image_size), transforms.CenterCrop(image_size),
+            transforms.ToTensor(), transforms.Lambda(normalize_to_minus_one_one),
+        ])
+        import os as _os
+        ds = tv_datasets.ImageFolder(_os.path.join(data_root, "train"), transform=tf)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
+    loader = DataLoader(ds, batch_size=256, shuffle=False, num_workers=4)
 
     idx = 0
-    for batch, _ in loaders.train:
+    for batch, _ in loader:
         for img in batch:
             img = (img.clamp(-1, 1) + 1) * 0.5  # [-1,1] -> [0,1]
             img = (img * 255).clamp(0, 255).to(torch.uint8)

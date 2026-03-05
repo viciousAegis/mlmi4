@@ -77,13 +77,18 @@ def train(path_type: str, steps: int = 20000, lr: float = 1e-3, batch: int = 409
 
 @torch.no_grad()
 def ode_sample(net: nn.Module, n: int, nfe: int, device: str = "cpu"):
-    """Fixed-step midpoint ODE solver for 2D flow."""
+    """Fixed-step midpoint ODE solver for 2D flow.
+
+    nfe = total number of function evaluations (must be even).
+    Each midpoint step uses 2 evaluations.
+    """
+    assert nfe % 2 == 0, "Midpoint method requires even NFE"
+    n_steps = nfe // 2
     x = torch.randn(n, 2, device=device)
-    dt = 1.0 / nfe
-    for i in range(nfe):
+    dt = 1.0 / n_steps
+    for i in range(n_steps):
         t_i = i * dt
         t_mid = t_i + 0.5 * dt
-        # midpoint step
         t_vec = torch.full((n,), t_i, device=device)
         k1 = net(x, t_vec)
         t_mid_vec = torch.full((n,), t_mid, device=device)
@@ -115,14 +120,16 @@ def plot_density(net, path_type, nfe_list, out_dir, device="cpu"):
     plt.close()
 
 
-def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=100, device="cpu"):
+def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=200, device="cpu"):
     """Visualise ODE trajectories from noise to data (Figure 9 style)."""
+    assert nfe % 2 == 0
+    n_steps = nfe // 2
     x = torch.randn(n_traj, 2, device=device)
     trajectory = [x.cpu().numpy()]
-    dt = 1.0 / nfe
+    dt = 1.0 / n_steps
 
     with torch.no_grad():
-        for i in range(nfe):
+        for i in range(n_steps):
             t_i = i * dt
             t_vec = torch.full((n_traj,), t_i, device=device)
             t_mid = t_i + 0.5 * dt
@@ -132,7 +139,7 @@ def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=100, device="cpu"
             x = x + dt * k2
             trajectory.append(x.cpu().numpy())
 
-    trajectory = np.array(trajectory)  # (nfe+1, n_traj, 2)
+    trajectory = np.array(trajectory)  # (n_steps+1, n_traj, 2)
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     for j in range(n_traj):
@@ -149,13 +156,15 @@ def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=100, device="cpu"
 
 def plot_time_snapshots(net, path_type, out_dir, n=20000, nfe=200, device="cpu"):
     """Show density at t=0, 1/3, 2/3, 1 (Figure 4 style)."""
+    assert nfe % 2 == 0
+    n_steps = nfe // 2
     x = torch.randn(n, 2, device=device)
-    dt = 1.0 / nfe
+    dt = 1.0 / n_steps
     snapshots = {0: x.cpu().numpy()}
-    snapshot_times = {int(nfe / 3): "t=1/3", int(2 * nfe / 3): "t=2/3", nfe: "t=1"}
+    snapshot_times = {int(n_steps / 3): "t=1/3", int(2 * n_steps / 3): "t=2/3", n_steps: "t=1"}
 
     with torch.no_grad():
-        for i in range(nfe):
+        for i in range(n_steps):
             t_i = i * dt
             t_vec = torch.full((n,), t_i, device=device)
             t_mid = t_i + 0.5 * dt
@@ -209,7 +218,7 @@ def main():
         torch.save(net.state_dict(), os.path.join(args.out_dir, f"mlp_{path_type}.pt"))
 
         # Visualisations
-        plot_density(net, path_type, nfe_list=[4, 8, 10, 20, 100], out_dir=args.out_dir, device=device)
+        plot_density(net, path_type, nfe_list=[4, 8, 10, 20, 100], out_dir=args.out_dir, device=device)  # all even
         plot_trajectories(net, path_type, out_dir=args.out_dir, device=device)
         plot_time_snapshots(net, path_type, out_dir=args.out_dir, device=device)
 
