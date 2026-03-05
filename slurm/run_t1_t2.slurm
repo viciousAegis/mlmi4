@@ -65,7 +65,9 @@ echo "========== T2: CIFAR-10 FM w/ OT =========="
 echo "Start: $(date)"
 
 uv run python3 training.py --config configs/cifar10_ot.yaml \
-    --no-wandb \
+    --use-wandb \
+    --wandb-project mlmi4-flow-matching \
+    --wandb-name cifar10-ot \
     --out-dir ./runs/cifar10_ot
 
 echo "T2 done: $(date)"
