@@ -67,12 +67,15 @@ def evaluate_loss(net: nn.Module, loader, device: str, cfg: TrainConfig,
     return float(sum(losses) / max(1, len(losses)))
 
 
-def save_ckpt(path: str, net: nn.Module, opt: torch.optim.Optimizer, step: int, ema: EMA | None):
-    """Save training checkpoint."""
+def save_ckpt(path: str, net: nn.Module, opt: torch.optim.Optimizer, step: int,
+              ema: EMA | None, arch: dict | None = None, image_size: int = 32):
+    """Save training checkpoint with architecture config for portable loading."""
     payload = {
         "step": step,
         "model": net.state_dict(),
         "opt": opt.state_dict(),
         "ema": (ema.shadow if ema is not None else None),
+        "arch": arch or {},
+        "image_size": image_size,
     }
     torch.save(payload, path)

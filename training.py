@@ -71,14 +71,15 @@ def main():
         f"Image size: {loaders.image_size}x{loaders.image_size}, Channels: {loaders.num_channels}"
     )
 
-    net = UNetCIFAR(
+    arch_kwargs = dict(
         base_ch=cfg.base_ch,
         channel_mults=cfg.channel_mults,
         num_res_blocks=cfg.num_res_blocks,
         attn_resolutions=cfg.attn_resolutions,
         num_heads=cfg.num_heads,
         dropout=cfg.dropout,
-    ).to(device)
+    )
+    net = UNetCIFAR(**arch_kwargs).to(device)
 
     opt = torch.optim.Adam(
         net.parameters(), lr=cfg.lr, betas=cfg.betas, weight_decay=cfg.weight_decay
@@ -171,7 +172,8 @@ def main():
         # checkpoint
         if step % cfg.ckpt_every == 0 or step == cfg.total_steps:
             ckpt_path = os.path.join(cfg.out_dir, f"ckpt_step{step}.pt")
-            save_ckpt(ckpt_path, net, opt, step, ema)
+            save_ckpt(ckpt_path, net, opt, step, ema,
+                      arch=arch_kwargs, image_size=loaders.image_size)
             print(f"saved: {ckpt_path}")
 
             # # Save checkpoint to wandb as artifact

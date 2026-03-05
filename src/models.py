@@ -137,6 +137,7 @@ class UNetCIFAR(nn.Module):
         attn_resolutions=(16,),
         num_heads: int = 4,
         dropout: float = 0.0,
+        image_size: int = 32,
     ):
         super().__init__()
         self.attn_resolutions = set(attn_resolutions)
@@ -155,7 +156,7 @@ class UNetCIFAR(nn.Module):
         self.downsamples = nn.ModuleList()
 
         ch = base_ch
-        resolution = 32
+        resolution = image_size
         skip_chs: list[int] = []
 
         for i, mult in enumerate(channel_mults):
