@@ -47,6 +47,12 @@ class TrainConfig:
     num_heads: int = 4
     dropout: float = 0.0
 
+    # Evaluation during training (Figures 5, 10)
+    fid_every: int = 0               # compute FID every N steps (0 = disabled)
+    fid_n_samples: int = 10000       # samples for training-time FID (fewer for speed)
+    nfe_every: int = 0               # track adaptive NFE every N steps (0 = disabled)
+    nfe_n_samples: int = 16          # samples for NFE measurement
+
     # AMP / EMA
     use_amp: bool = True
     ema: bool = True
@@ -168,6 +174,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--dropout', type=float, default=None,
                         help='Dropout rate')
     
+    # Evaluation during training
+    parser.add_argument('--fid-every', type=int, default=None,
+                        help='Compute FID every N steps (0 = disabled)')
+    parser.add_argument('--fid-n-samples', type=int, default=None,
+                        help='Samples for training-time FID')
+    parser.add_argument('--nfe-every', type=int, default=None,
+                        help='Track adaptive NFE every N steps (0 = disabled)')
+    parser.add_argument('--nfe-n-samples', type=int, default=None,
+                        help='Samples for NFE measurement')
+
     # AMP / EMA
     parser.add_argument('--use-amp', action='store_true', default=None,
                         help='Use automatic mixed precision')

@@ -2,6 +2,8 @@
 from __future__ import annotations
 import os
 import time
+import copy
+import tempfile
 from dataclasses import asdict
 
 import torch
@@ -12,6 +14,47 @@ from src.paths import get_path_and_target
 from src.models import UNetCIFAR
 from src.config import TrainConfig, parse_args, load_config
 from src.utils import EMA, pick_device, lr_at_step, evaluate_loss, save_ckpt
+
+
+@torch.no_grad()
+def evaluate_training_fid(net, ema, cfg, loaders, device, arch_kwargs):
+    """Compute FID during training using current (EMA) model."""
+    from evaluate_fid import generate_samples, save_images_to_dir, compute_fid
+
+    # Use EMA weights if available
+    eval_net = copy.deepcopy(net)
+    if ema is not None:
+        ema.copy_to(eval_net)
+    eval_net.eval()
+
+    images, avg_nfe = generate_samples(
+        eval_net, n=cfg.fid_n_samples, image_size=loaders.image_size,
+        channels=3, device=device, solver="dopri5", nfe=None,
+        atol=1e-5, rtol=1e-5, batch_size=min(256, cfg.fid_n_samples),
+    )
+    sample_dir = tempfile.mkdtemp(prefix="fm_train_fid_")
+    save_images_to_dir(images, sample_dir)
+    fid = compute_fid(sample_dir, cfg.dataset, cfg.data_root, loaders.image_size, device)
+
+    # Clean up
+    import shutil
+    shutil.rmtree(sample_dir, ignore_errors=True)
+    return fid, avg_nfe
+
+
+@torch.no_grad()
+def evaluate_training_nfe(net, ema, cfg, loaders, device):
+    """Measure average adaptive solver NFE."""
+    from src.solvers import dopri5_sample as dopri5_with_nfe
+
+    eval_net = copy.deepcopy(net)
+    if ema is not None:
+        ema.copy_to(eval_net)
+    eval_net.eval()
+
+    x0 = torch.randn(cfg.nfe_n_samples, 3, loaders.image_size, loaders.image_size, device=device)
+    _, nfe = dopri5_with_nfe(eval_net, x0, atol=1e-5, rtol=1e-5)
+    return nfe
 
 
 def main():
@@ -168,6 +211,20 @@ def main():
                         "step": step,
                     }
                 )
+
+        # FID evaluation (Figure 5)
+        if cfg.fid_every > 0 and step % cfg.fid_every == 0:
+            fid, fid_nfe = evaluate_training_fid(net, ema, cfg, loaders, device, arch_kwargs)
+            print(f"           | FID {fid:.2f} (NFE={fid_nfe:.0f})")
+            if cfg.use_wandb:
+                wandb.log({"eval/fid": fid, "eval/fid_nfe": fid_nfe, "step": step})
+
+        # NFE tracking (Figure 10)
+        if cfg.nfe_every > 0 and step % cfg.nfe_every == 0:
+            nfe_count = evaluate_training_nfe(net, ema, cfg, loaders, device)
+            print(f"           | adaptive NFE {nfe_count}")
+            if cfg.use_wandb:
+                wandb.log({"eval/adaptive_nfe": nfe_count, "step": step})
 
         # checkpoint
         if step % cfg.ckpt_every == 0 or step == cfg.total_steps:
