@@ -1,0 +1,50 @@
+# ImageNet 32x32 FM w/ OT — Paper Table 3 settings
+dataset: "imagenet"
+data_root: "./data/imagenet"
+image_size: 32
+batch_size: 64
+effective_batch: 1024
+val_size: 50000
+num_workers: 4
+
+# Training: 200 epochs ≈ 250k steps at batch 1024
+total_steps: 250000
+log_every: 500
+val_every: 5000
+ckpt_every: 50000
+
+# Optimization
+lr: 0.0001
+warmup_steps: 20000
+poly_power: 2.0
+weight_decay: 0.0
+
+# Path
+path_type: "ot"
+sigma_min: 0.01
+
+# Architecture (Table 3: channels=256, depth=3, ch_mult=1,2,2,2, heads=4)
+base_ch: 256
+channel_mults: [1, 2, 2, 2]
+num_res_blocks: 3
+attn_resolutions: [16]
+num_heads: 4
+dropout: 0.0
+
+# Precision (paper uses FP32 for ImageNet 32x32)
+use_amp: false
+ema: true
+ema_decay: 0.9999
+
+# Evaluation during training
+fid_every: 50000
+fid_n_samples: 10000
+nfe_every: 10000
+nfe_n_samples: 16
+
+# Logging
+use_wandb: true
+wandb_project: "mlmi4-flow-matching"
+wandb_tags: ["imagenet32", "ot"]
+
+out_dir: "./runs/imagenet32_ot"
