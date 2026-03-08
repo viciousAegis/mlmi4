@@ -57,6 +57,28 @@ def evaluate_training_nfe(net, ema, cfg, loaders, device):
     return nfe
 
 
+def load_resume_ckpt(cfg, net, opt, ema, device):
+    """Resume training from the latest checkpoint in out_dir if --resume is set."""
+    import glob
+    ckpts = sorted(glob.glob(os.path.join(cfg.out_dir, "ckpt_step*.pt")))
+    if not ckpts:
+        print("No checkpoint found to resume from. Starting from scratch.")
+        return 0
+
+    ckpt_path = ckpts[-1]
+    print(f"Resuming from {ckpt_path}")
+    ckpt = torch.load(ckpt_path, map_location=device)
+
+    net.load_state_dict(ckpt["model"])
+    opt.load_state_dict(ckpt["opt"])
+    if ema is not None and ckpt.get("ema") is not None:
+        ema.shadow = ckpt["ema"]
+
+    start_step = ckpt["step"]
+    print(f"Resumed at step {start_step}")
+    return start_step
+
+
 def main():
     args = parse_args()
     cfg = load_config(args.config, args)
@@ -74,6 +96,7 @@ def main():
             name=cfg.wandb_name,
             tags=list(cfg.wandb_tags) if cfg.wandb_tags else None,
             config=asdict(cfg),
+            resume="allow",
         )
         # Update cfg with any wandb sweep overrides
         if wandb.config:
@@ -134,11 +157,16 @@ def main():
 
     ema = EMA(net, cfg.ema_decay) if cfg.ema else None
 
+    # Resume from checkpoint if requested
+    start_step = 0
+    if cfg.resume:
+        start_step = load_resume_ckpt(cfg, net, opt, ema, device)
+
     train_it = iter(loaders.train)
     t0 = time.time()
 
     net.train()
-    for step in range(1, cfg.total_steps + 1):
+    for step in range(start_step + 1, cfg.total_steps + 1):
         # set LR
         lr = lr_at_step(cfg, step)
         for pg in opt.param_groups:
@@ -184,7 +212,8 @@ def main():
         # logging
         if step % cfg.log_every == 0 or step == 1:
             dt = time.time() - t0
-            steps_per_s = step / max(1e-6, dt)
+            elapsed_steps = step - start_step
+            steps_per_s = elapsed_steps / max(1e-6, dt)
             print(
                 f"step {step:06d} | lr {lr:.3e} | train_loss {total_loss:.6f} | {steps_per_s:.2f} steps/s"
             )
@@ -212,32 +241,32 @@ def main():
                     }
                 )
 
-        # FID evaluation (Figure 5)
-        if cfg.fid_every > 0 and step % cfg.fid_every == 0:
-            fid, fid_nfe = evaluate_training_fid(net, ema, cfg, loaders, device, arch_kwargs)
-            print(f"           | FID {fid:.2f} (NFE={fid_nfe:.0f})")
-            if cfg.use_wandb:
-                wandb.log({"eval/fid": fid, "eval/fid_nfe": fid_nfe, "step": step})
-
-        # NFE tracking (Figure 10)
-        if cfg.nfe_every > 0 and step % cfg.nfe_every == 0:
-            nfe_count = evaluate_training_nfe(net, ema, cfg, loaders, device)
-            print(f"           | adaptive NFE {nfe_count}")
-            if cfg.use_wandb:
-                wandb.log({"eval/adaptive_nfe": nfe_count, "step": step})
-
-        # checkpoint
+        # checkpoint FIRST (before evals that might fail)
         if step % cfg.ckpt_every == 0 or step == cfg.total_steps:
             ckpt_path = os.path.join(cfg.out_dir, f"ckpt_step{step}.pt")
             save_ckpt(ckpt_path, net, opt, step, ema,
                       arch=arch_kwargs, image_size=loaders.image_size)
             print(f"saved: {ckpt_path}")
 
-            # # Save checkpoint to wandb as artifact
-            # if cfg.use_wandb:
-            #     artifact = wandb.Artifact(f"model-step{step}", type="model")
-            #     artifact.add_file(ckpt_path)
-            #     wandb.log_artifact(artifact)
+        # FID evaluation (Figure 5) — after checkpoint so failures don't lose progress
+        if cfg.fid_every > 0 and step % cfg.fid_every == 0:
+            try:
+                fid, fid_nfe = evaluate_training_fid(net, ema, cfg, loaders, device, arch_kwargs)
+                print(f"           | FID {fid:.2f} (NFE={fid_nfe:.0f})")
+                if cfg.use_wandb:
+                    wandb.log({"eval/fid": fid, "eval/fid_nfe": fid_nfe, "step": step})
+            except Exception as e:
+                print(f"           | FID evaluation failed: {e}")
+
+        # NFE tracking (Figure 10)
+        if cfg.nfe_every > 0 and step % cfg.nfe_every == 0:
+            try:
+                nfe_count = evaluate_training_nfe(net, ema, cfg, loaders, device)
+                print(f"           | adaptive NFE {nfe_count}")
+                if cfg.use_wandb:
+                    wandb.log({"eval/adaptive_nfe": nfe_count, "step": step})
+            except Exception as e:
+                print(f"           | NFE evaluation failed: {e}")
 
     if cfg.use_wandb:
         wandb.finish()

@@ -59,12 +59,14 @@ echo "T1 done: $(date)"
 
 # =============================================================================
 # T2: CIFAR-10 FM w/ OT (~24-36 hrs)
+# Uses --resume so it can pick up from the last checkpoint if resubmitted.
 # =============================================================================
 echo ""
 echo "========== T2: CIFAR-10 FM w/ OT =========="
 echo "Start: $(date)"
 
 uv run python3 training.py --config configs/cifar10_ot.yaml \
+    --resume \
     --use-wandb \
     --wandb-project mlmi4-flow-matching \
     --wandb-name cifar10-ot \

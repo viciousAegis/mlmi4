@@ -66,6 +66,7 @@ class TrainConfig:
     wandb_tags: tuple[str, ...] | None = None
 
     # misc
+    resume: bool = False
     out_dir: str = "./runs/fm_ot_cifar10"
 
 
@@ -211,6 +212,8 @@ def parse_args() -> argparse.Namespace:
                         help='W&B run tags')
     
     # Misc
+    parser.add_argument('--resume', action='store_true', default=None,
+                        help='Resume from latest checkpoint in out_dir')
     parser.add_argument('--out-dir', type=str, default=None,
                         help='Output directory')
     
