@@ -46,19 +46,10 @@ echo "=============================================="
 set -e
 mkdir -p logs
 
-# =============================================================================
-# T1: 2D Checkerboard (~5 min)
-# =============================================================================
-echo ""
-echo "========== T1: 2D Checkerboard =========="
-echo "Start: $(date)"
-
-uv run python3 checkerboard.py --device cuda --out-dir ./runs/checkerboard
-
-echo "T1 done: $(date)"
+# T1 (checkerboard) already completed — skipping.
 
 # =============================================================================
-# T2: CIFAR-10 FM w/ OT (~24-36 hrs)
+# T2: CIFAR-10 FM w/ OT
 # Uses --resume so it can pick up from the last checkpoint if resubmitted.
 # =============================================================================
 echo ""
