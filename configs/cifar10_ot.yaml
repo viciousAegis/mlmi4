@@ -2,16 +2,16 @@
 dataset: "cifar10"
 data_root: "./data"
 image_size: 32
-batch_size: 64
+batch_size: 256
 effective_batch: 256
 val_size: 5000
 num_workers: 4
 
-# Training: 1000 epochs ≈ 391k steps at batch 256
-total_steps: 391000
+# Training: 1000 epochs ≈ 195k steps (50k images / batch 256 ≈ 195 steps/epoch)
+total_steps: 195000
 log_every: 500
 val_every: 5000
-ckpt_every: 50000
+ckpt_every: 25000
 
 # Optimization
 lr: 0.0005
@@ -37,9 +37,9 @@ ema: true
 ema_decay: 0.9999
 
 # Evaluation during training
-fid_every: 50000
+fid_every: 25000
 fid_n_samples: 10000
-nfe_every: 10000
+nfe_every: 25000
 nfe_n_samples: 16
 
 # Logging
