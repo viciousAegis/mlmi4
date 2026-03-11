@@ -19,6 +19,70 @@ Run with default settings (CIFAR-10, OT path):
 python training.py
 ```
 
+### Text Generation (Discrete Flow Matching)
+
+Train unconditional text model (OpenWebText + GPT-2 tokenizer):
+```bash
+python training_text.py \
+  --dataset-name openwebtext \
+  --tokenizer gpt2 \
+  --seq-len 256 \
+  --batch-size 32 \
+  --effective-batch 512 \
+  --total-steps 300000 \
+  --use-amp \
+  --out-dir ./runs/text_dfm
+```
+
+Train from YAML config:
+```bash
+python training_text.py --config config_text_example.yaml
+```
+
+Enable W&B for text training:
+```bash
+python training_text.py --config config_text_example.yaml --use-wandb --wandb-project mlmi4-text-dfm
+```
+
+Sample text:
+```bash
+python sample_text.py \
+  --ckpt ./runs/text_dfm/ckpt_step300000.pt \
+  --n 8 \
+  --nfe 256 \
+  --temperature 0.9
+```
+
+Evaluate denoising metrics and optional generated-text perplexity:
+```bash
+python eval_text.py \
+  --ckpt ./runs/text_dfm/ckpt_step300000.pt \
+  --dataset-name openwebtext \
+  --eval-batches 200
+```
+
+Optional scorer perplexity (external LM):
+```bash
+python eval_text.py \
+  --ckpt ./runs/text_dfm/ckpt_step300000.pt \
+  --dataset-name openwebtext \
+  --scorer-model gpt2-large \
+  --n-samples 128 \
+  --nfe 256
+```
+
+Automated train + sweep eval:
+```bash
+python automate_text.py \
+  --train \
+  --train-config config_text_example.yaml \
+  --out-dir ./runs/text_dfm \
+  --dataset-name openwebtext \
+  --nfe-list 64,128,256,512 \
+  --temperature-list 0.8,0.9,1.0 \
+  --scorer-model gpt2-large
+```
+
 ### Dataset Selection
 
 Choose between CIFAR-10 or ImageNet:
