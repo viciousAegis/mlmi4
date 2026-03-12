@@ -23,8 +23,8 @@ PROJECT_DIR="/home/sn691/rds/hpc-work/MLMI4/mlmi4"
 cd "${PROJECT_DIR}"
 export PATH="$HOME/.local/bin:$PATH"
 
-# Find the final checkpoint
-CKPT=$(ls -t runs/cifar10_ot/ckpt_step*.pt | head -1)
+# Best checkpoint (FID=5.95 at step 125k)
+CKPT="runs/cifar10_ot/ckpt_step125000.pt"
 echo "=============================================="
 echo "Evaluating: ${CKPT}"
 echo "Node: $(hostname)"
