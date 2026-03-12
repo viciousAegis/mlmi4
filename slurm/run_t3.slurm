@@ -18,7 +18,7 @@
 module purge
 module load rhel8/default-amp
 
-PROJECT_DIR="/home/sn691/rds/hpc-work/MLMI4/mlmi4"
+PROJECT_DIR="/home/$USER/rds/hpc-work/mlmi4"
 cd "${PROJECT_DIR}"
 export PATH="$HOME/.local/bin:$PATH"
 
