@@ -58,12 +58,13 @@ def diffusion_path_and_target(
     x1: torch.Tensor, beta_min: float = 0.1, beta_max: float = 20.0, eps_t: float = 1e-5
 ):
     """
-    VP-diffusion probability path (paper Appendix E.1):
-      beta(t) = beta_min + (beta_max - beta_min) * t
-      alpha_bar(t) = exp(-0.5 * int_0^t beta(s) ds)
-      x_t = sqrt(alpha_bar(t)) * x1 + sqrt(1 - alpha_bar(t)) * eps
+    VP-diffusion probability path (paper Eq. 18, Appendix E.1):
+      p_t(x|x1) = N(x | alpha_{1-t} * x1, (1 - alpha_{1-t}^2) * I)
 
-    Time is sampled from [0, 1-eps_t] to avoid numerical issues at t=1.
+    Uses time-reversed alpha_bar: alpha_bar is evaluated at (1-t) so that
+    t=0 corresponds to noise and t=1 corresponds to data.
+
+    Time is sampled from [eps_t, 1-eps_t] to avoid numerical issues.
 
     Returns:
       t: (B,)
@@ -75,14 +76,15 @@ def diffusion_path_and_target(
     device = x1.device
     dtype = x1.dtype
 
-    # sample t in [0, 1-eps_t] and eps
-    t = torch.rand(B, device=device, dtype=dtype) * (1.0 - eps_t)
+    # sample t in [eps_t, 1-eps_t] and eps
+    t = torch.rand(B, device=device, dtype=dtype) * (1.0 - 2 * eps_t) + eps_t
     eps = torch.randn_like(x1)
 
     # Use autograd to compute d/dt of mu_scale and sig
     t_req = t.detach().clone().requires_grad_(True)
 
-    abar = alpha_bar_vp(t_req, beta_min=beta_min, beta_max=beta_max)
+    # Time-reversed: evaluate alpha_bar at (1-t) per paper Eq. 18
+    abar = alpha_bar_vp(1.0 - t_req, beta_min=beta_min, beta_max=beta_max)
     mu_scale = torch.sqrt(abar)
     sig = torch.sqrt(1.0 - abar)
 
