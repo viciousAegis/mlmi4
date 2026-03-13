@@ -81,28 +81,30 @@ def diffusion_path_and_target(
     eps = torch.randn_like(x1)
 
     # Use autograd to compute d/dt of mu_scale and sig
-    t_req = t.detach().clone().requires_grad_(True)
+    # enable_grad needed so this works even inside @torch.no_grad() contexts
+    with torch.enable_grad():
+        t_req = t.detach().clone().requires_grad_(True)
 
-    # Time-reversed: evaluate alpha_bar at (1-t) per paper Eq. 18
-    abar = alpha_bar_vp(1.0 - t_req, beta_min=beta_min, beta_max=beta_max)
-    mu_scale = torch.sqrt(abar)
-    sig = torch.sqrt(1.0 - abar)
+        # Time-reversed: evaluate alpha_bar at (1-t) per paper Eq. 18
+        abar = alpha_bar_vp(1.0 - t_req, beta_min=beta_min, beta_max=beta_max)
+        mu_scale = torch.sqrt(abar)
+        sig = torch.sqrt(1.0 - abar)
+
+        # Compute d(mu_scale)/dt and d(sig)/dt via autograd
+        dmu_scale = torch.autograd.grad(
+            mu_scale.sum(), t_req, create_graph=False, retain_graph=True
+        )[0]
+        dsig = torch.autograd.grad(sig.sum(), t_req, create_graph=False)[0]
 
     # broadcast
-    mu_scale_ = mu_scale[:, None, None, None]
-    sig_ = sig[:, None, None, None]
+    mu_scale_ = mu_scale.detach()[:, None, None, None]
+    sig_ = sig.detach()[:, None, None, None]
 
     mu_t = mu_scale_ * x1
     x_t = mu_t + sig_ * eps
 
-    # Compute d(mu_scale)/dt and d(sig)/dt via autograd
-    dmu_scale = torch.autograd.grad(
-        mu_scale.sum(), t_req, create_graph=False, retain_graph=True
-    )[0]
-    dsig = torch.autograd.grad(sig.sum(), t_req, create_graph=False)[0]
-
-    dmu = dmu_scale[:, None, None, None] * x1
-    dsig_ = dsig[:, None, None, None]
+    dmu = dmu_scale.detach()[:, None, None, None] * x1
+    dsig_ = dsig.detach()[:, None, None, None]
 
     # u_t = dmu + (dsig/sig) * (x_t - mu_t)
     u_t = dmu + (dsig_ / sig_) * (x_t - mu_t)
