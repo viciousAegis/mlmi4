@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import os
+import re
+import signal
 import time
 
 import torch
@@ -32,12 +35,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-every", type=int, default=100)
     p.add_argument("--ckpt-every", type=int, default=5_000)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--warmup-steps", type=int, default=2_500)
+    p.add_argument("--beta1", type=float, default=0.9)
+    p.add_argument("--beta2", type=float, default=0.999)
     p.add_argument("--weight-decay", type=float, default=0.01)
-    p.add_argument("--schedule", type=str, default="cubic", choices=["linear", "square", "cubic"])
+    p.add_argument("--schedule", type=str, default="square", choices=["linear", "square", "cubic"])
     p.add_argument("--dim", type=int, default=768)
     p.add_argument("--n-layers", type=int, default=12)
     p.add_argument("--n-heads", type=int, default=12)
     p.add_argument("--ff-mult", type=int, default=4)
+    p.add_argument("--rope-theta", type=float, default=10_000.0)
     p.add_argument("--dropout", type=float, default=0.0)
     p.add_argument("--use-amp", action="store_true")
     p.add_argument("--use-wandb", action="store_true")
@@ -46,6 +53,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--wandb-name", type=str, default=None)
     p.add_argument("--wandb-tags", type=str, nargs="+", default=None)
     p.add_argument("--out-dir", type=str, default="./runs/text_dfm")
+    p.add_argument("--resume", type=str, default=None, help="Checkpoint path to resume from")
+    p.add_argument("--auto-resume", action="store_true", help="Auto-resume from latest checkpoint in out-dir")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", type=str, default=None)
     return p.parse_args()
@@ -102,6 +111,34 @@ def evaluate(
     return float(sum(losses) / len(losses)), float(sum(accs) / len(accs))
 
 
+def _lr_at_step(step: int, peak_lr: float, warmup_steps: int) -> float:
+    if warmup_steps <= 0:
+        return peak_lr
+    return peak_lr * min(1.0, step / float(warmup_steps))
+
+
+def _set_lr(opt: torch.optim.Optimizer, lr: float) -> None:
+    for group in opt.param_groups:
+        group["lr"] = lr
+
+
+def _latest_checkpoint_path(out_dir: str) -> str | None:
+    candidates = glob.glob(os.path.join(out_dir, "ckpt_step*.pt"))
+    if not candidates:
+        return None
+    pat = re.compile(r"ckpt_step(\d+)\.pt$")
+    ranked: list[tuple[int, str]] = []
+    for path in candidates:
+        m = pat.search(path)
+        if m is None:
+            continue
+        ranked.append((int(m.group(1)), path))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda x: x[0])
+    return ranked[-1][1]
+
+
 def main() -> None:
     args = apply_yaml_overrides(parse_args())
     torch.manual_seed(args.seed)
@@ -131,10 +168,16 @@ def main() -> None:
         n_layers=args.n_layers,
         n_heads=args.n_heads,
         ff_mult=args.ff_mult,
+        rope_theta=args.rope_theta,
         dropout=args.dropout,
     ).to(device)
 
-    opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    opt = torch.optim.AdamW(
+        net.parameters(),
+        lr=args.lr,
+        betas=(args.beta1, args.beta2),
+        weight_decay=args.weight_decay,
+    )
 
     use_amp = args.use_amp and device == "cuda"
     scaler = torch.amp.GradScaler(enabled=use_amp)
@@ -143,9 +186,59 @@ def main() -> None:
     accum_steps = max(1, args.effective_batch // args.batch_size)
     train_it = iter(loaders.train)
     t0 = time.time()
+    start_step = 0
 
     print(f"device={device}")
     print(f"vocab_size={loaders.vocab_size}, seq_len={args.seq_len}, schedule={args.schedule}")
+    if args.effective_batch % args.batch_size != 0:
+        print(
+            f"[warn] effective_batch={args.effective_batch} not divisible by batch_size={args.batch_size}; "
+            f"using accum_steps={accum_steps}"
+        )
+
+    resume_path = args.resume
+    if resume_path is None and args.auto_resume:
+        resume_path = _latest_checkpoint_path(args.out_dir)
+    if resume_path is not None:
+        ckpt = torch.load(resume_path, map_location="cpu")
+        net.load_state_dict(ckpt["model"])
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+        if "scaler" in ckpt and use_amp:
+            scaler.load_state_dict(ckpt["scaler"])
+        start_step = int(ckpt.get("step", 0))
+        print(f"resumed from: {resume_path} (step={start_step})")
+
+    stop_requested = False
+
+    def _request_stop(signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+        print(f"\nreceived signal {signum}; will checkpoint and stop after current step")
+
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGINT, _request_stop)
+
+    def _save_checkpoint(step: int) -> str:
+        ckpt_path = os.path.join(args.out_dir, f"ckpt_step{step}.pt")
+        torch.save(
+            {
+                "step": step,
+                "model": net.state_dict(),
+                "optimizer": opt.state_dict(),
+                "scaler": scaler.state_dict() if use_amp else None,
+                "args": vars(args),
+                "vocab_size": loaders.vocab_size,
+                "mask_token_id": mask_token_id,
+                "tokenizer_name": loaders.tokenizer_name,
+                "seq_len": args.seq_len,
+            },
+            ckpt_path,
+        )
+        return ckpt_path
+
     if args.use_wandb:
         wandb.init(
             project=args.wandb_project,
@@ -154,8 +247,20 @@ def main() -> None:
             tags=args.wandb_tags,
             config=vars(args),
         )
+        if start_step > 0:
+            wandb.log({"resume/step": start_step}, step=start_step)
 
-    for step in range(1, args.total_steps + 1):
+    if start_step >= args.total_steps:
+        print(f"resume step {start_step} already reached total_steps={args.total_steps}; exiting")
+        if args.use_wandb:
+            wandb.finish()
+        signal.signal(signal.SIGTERM, previous_sigterm)
+        signal.signal(signal.SIGINT, previous_sigint)
+        return
+
+    for step in range(start_step + 1, args.total_steps + 1):
+        lr = _lr_at_step(step=step, peak_lr=args.lr, warmup_steps=args.warmup_steps)
+        _set_lr(opt, lr)
         opt.zero_grad(set_to_none=True)
         total_loss = 0.0
         total_masked = 0
@@ -200,11 +305,13 @@ def main() -> None:
         if step % args.log_every == 0 or step == 1:
             steps_per_s = step / max(1e-6, time.time() - t0)
             print(
-                f"step {step:07d} | train_loss {total_loss:.6f} | masked_tok {total_masked} | {steps_per_s:.2f} steps/s"
+                f"step {step:07d} | lr {lr:.3e} | train_loss {total_loss:.6f} | "
+                f"masked_tok {total_masked} | {steps_per_s:.2f} steps/s"
             )
             if args.use_wandb:
                 wandb.log(
                     {
+                        "train/lr": lr,
                         "train/loss": total_loss,
                         "train/masked_tokens": total_masked,
                         "train/steps_per_s": steps_per_s,
@@ -231,24 +338,18 @@ def main() -> None:
                 )
 
         if step % args.ckpt_every == 0 or step == args.total_steps:
-            ckpt_path = os.path.join(args.out_dir, f"ckpt_step{step}.pt")
-            torch.save(
-                {
-                    "step": step,
-                    "model": net.state_dict(),
-                    "optimizer": opt.state_dict(),
-                    "args": vars(args),
-                    "vocab_size": loaders.vocab_size,
-                    "mask_token_id": mask_token_id,
-                    "tokenizer_name": loaders.tokenizer_name,
-                    "seq_len": args.seq_len,
-                },
-                ckpt_path,
-            )
+            ckpt_path = _save_checkpoint(step)
             print(f"saved: {ckpt_path}")
+
+        if stop_requested:
+            ckpt_path = _save_checkpoint(step)
+            print(f"saved interrupt checkpoint: {ckpt_path}")
+            break
 
     if args.use_wandb:
         wandb.finish()
+    signal.signal(signal.SIGTERM, previous_sigterm)
+    signal.signal(signal.SIGINT, previous_sigint)
 
 
 if __name__ == "__main__":

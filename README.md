@@ -39,9 +39,20 @@ Train from YAML config:
 python training_text.py --config config_text_example.yaml
 ```
 
+Resume training from a checkpoint (or latest checkpoint automatically):
+```bash
+python training_text.py --config config_text_example.yaml --resume ./runs/text_dfm/ckpt_step50000.pt
+python training_text.py --config config_text_example.yaml --auto-resume
+```
+
 Enable W&B for text training:
 ```bash
 python training_text.py --config config_text_example.yaml --use-wandb --wandb-project mlmi4-text-dfm
+```
+
+Run paper-small OpenWebText setup on Slurm (W&B enabled):
+```bash
+sbatch slurm/train_text_small_dfm.slurm
 ```
 
 Sample text:

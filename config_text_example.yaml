@@ -1,19 +1,52 @@
 # Text discrete flow-matching example config values
 # Use with: python training_text.py --config config_text_example.yaml
 
+# Data
 tokenizer: gpt2
 dataset_name: openwebtext
+dataset_config: null
+text_file: null
+split: train
+max_documents: 100000
 seq_len: 256
+num_workers: 8
+
+# Optimization / training loop
 batch_size: 32
 effective_batch: 512
-total_steps: 300000
+total_steps: 400000
+log_every: 100
 val_every: 2000
 ckpt_every: 5000
 lr: 0.0003
-schedule: cubic
+warmup_steps: 2500
+beta1: 0.9
+beta2: 0.999
+weight_decay: 0.0
+schedule: square
+
+# Model (paper small)
 dim: 768
 n_layers: 12
 n_heads: 12
+ff_mult: 4
+rope_theta: 10000.0
+dropout: 0.1
+
+# Runtime / checkpointing
 use_amp: true
-use_wandb: false
+out_dir: ./runs/text_dfm_small
+resume: null
+auto_resume: true
+seed: 42
+device: null
+
+# W&B
+use_wandb: true
 wandb_project: mlmi4-text-dfm
+wandb_entity: akshitsinha3
+wandb_name: text-ot-run
+wandb_tags:
+  - paper-small
+  - openwebtext
+  - dfm

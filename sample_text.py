@@ -15,7 +15,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n", type=int, default=8)
     p.add_argument("--nfe", type=int, default=256)
     p.add_argument("--temperature", type=float, default=1.0)
-    p.add_argument("--schedule", type=str, default="cubic", choices=["linear", "square", "cubic"])
+    p.add_argument(
+        "--temperature-scheduler",
+        type=str,
+        default="paper",
+        choices=["constant", "paper"],
+        help="paper: tau_t = tau * (1 - t)^2",
+    )
+    p.add_argument("--schedule", type=str, default="square", choices=["linear", "square", "cubic"])
     p.add_argument("--max-new-tokens", type=int, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", type=str, default=None)
@@ -34,6 +41,7 @@ def load_model(ckpt_path: str, device: str) -> tuple[DiscreteFlowTransformer, di
         n_layers=args["n_layers"],
         n_heads=args["n_heads"],
         ff_mult=args["ff_mult"],
+        rope_theta=args.get("rope_theta", 10_000.0),
         dropout=args["dropout"],
     ).to(device)
     net.load_state_dict(ckpt["model"], strict=True)
@@ -47,6 +55,7 @@ def sample_sequences(
     n: int,
     nfe: int,
     temperature: float,
+    temperature_scheduler: str,
     schedule: str,
     device: str,
 ) -> torch.Tensor:
@@ -60,7 +69,11 @@ def sample_sequences(
         t_next = ts[i + 1].expand(n)
 
         logits = net(x, t_cur)
-        logits = logits / max(1e-6, temperature)
+        if temperature_scheduler == "paper":
+            tau_t = temperature * (1.0 - t_cur) ** 2
+            logits = logits / tau_t[:, None, None].clamp_min(1e-6)
+        else:
+            logits = logits / max(1e-6, temperature)
         probs = torch.softmax(logits, dim=-1)
         sampled = torch.multinomial(probs.reshape(-1, probs.size(-1)), num_samples=1).view(n, seq_len)
 
@@ -93,6 +106,7 @@ def main() -> None:
         n=args.n,
         nfe=args.nfe,
         temperature=args.temperature,
+        temperature_scheduler=args.temperature_scheduler,
         schedule=args.schedule,
         device=device,
     )
