@@ -35,10 +35,10 @@ def diffusion_path_2d(x1: torch.Tensor, beta_min: float = 0.1, beta_max: float =
     t_req = t.detach().clone().requires_grad_(True)
     # Time-reversed: evaluate alpha_bar at (1-t) per paper Eq. 18
     s = 1.0 - t_req
-    log_abar = -0.5 * (beta_min * s + 0.5 * (beta_max - beta_min) * s ** 2)
-    abar = torch.exp(log_abar)
-    mu_scale = torch.sqrt(abar)
-    sig = torch.sqrt(1.0 - abar)
+    log_alpha = -0.5 * (beta_min * s + 0.5 * (beta_max - beta_min) * s ** 2)
+    alpha = torch.exp(log_alpha)
+    mu_scale = alpha
+    sig = torch.sqrt(1.0 - alpha ** 2)
     mu_t = mu_scale[:, None] * x1
     x_t = mu_t + sig[:, None] * eps
     dmu_scale = torch.autograd.grad(mu_scale.sum(), t_req, retain_graph=True)[0]

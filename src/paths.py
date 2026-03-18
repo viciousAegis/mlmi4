@@ -43,7 +43,7 @@ def ot_path_and_target(x1: torch.Tensor, sigma_min: float = 0.01):
     return t, x_t, u_t
 
 
-def alpha_bar_vp(t: torch.Tensor, beta_min: float = 0.1, beta_max: float = 20.0) -> torch.Tensor:
+def alpha_vp(t: torch.Tensor, beta_min: float = 0.1, beta_max: float = 20.0) -> torch.Tensor:
     """
     VP linear-beta schedule alpha_bar(t) as used in the paper (Appendix E.1).
     beta(s) = beta_min + (beta_max - beta_min) * s
@@ -85,10 +85,12 @@ def diffusion_path_and_target(
     with torch.enable_grad():
         t_req = t.detach().clone().requires_grad_(True)
 
-        # Time-reversed: evaluate alpha_bar at (1-t) per paper Eq. 18
-        abar = alpha_bar_vp(1.0 - t_req, beta_min=beta_min, beta_max=beta_max)
-        mu_scale = torch.sqrt(abar)
-        sig = torch.sqrt(1.0 - abar)
+        # Time-reversed: evaluate alpha at (1-t) per paper Eq. 18
+        # alpha_vp returns alpha_t = exp(-0.5 * integral), NOT alpha_bar
+        # Paper: mu_t = alpha_{1-t} * x1, sigma_t = sqrt(1 - alpha_{1-t}^2)
+        alpha = alpha_vp(1.0 - t_req, beta_min=beta_min, beta_max=beta_max)
+        mu_scale = alpha
+        sig = torch.sqrt(1.0 - alpha ** 2)
 
         # Compute d(mu_scale)/dt and d(sig)/dt via autograd
         dmu_scale = torch.autograd.grad(
