@@ -62,6 +62,16 @@ print('Downloaded.')
 
 ## Further Instructions for James: Train FM w/ Diffusion
 
+### Update account name in slurm script
+
+In slurm/run_t3.slurm, update line 6 to include your own account name (e.g. ab1234):
+
+```bash
+#SBATCH -A MLMI-<YOUR_ACCOUNT_NAME>-SL2-GPU
+```
+
+This will allow you to successfully submit the slurm job in the next step.
+
 ### Submit training job
 
 ```bash

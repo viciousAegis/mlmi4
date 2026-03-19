@@ -60,12 +60,13 @@ def evaluate_training_nfe(net, ema, cfg, loaders, device):
 def load_resume_ckpt(cfg, net, opt, ema, device):
     """Resume training from the latest checkpoint in out_dir if --resume is set."""
     import glob
-    ckpts = sorted(glob.glob(os.path.join(cfg.out_dir, "ckpt_step*.pt")))
+    ckpts = glob.glob(os.path.join(cfg.out_dir, "ckpt_step*.pt"))
     if not ckpts:
         print("No checkpoint found to resume from. Starting from scratch.")
         return 0
 
-    ckpt_path = ckpts[-1]
+    max_ckpt = max(ckpts, key=lambda x: int(x.split("step")[1].split(".")[0])) # extract step numbers from ckpt paths and select ckpt with max steps
+    ckpt_path = max_ckpt
     print(f"Resuming from {ckpt_path}")
     ckpt = torch.load(ckpt_path, map_location=device)
 

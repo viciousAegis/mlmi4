@@ -13,4 +13,5 @@ dependencies = [
     "pytorch-fid>=0.3.0",
     "matplotlib>=3.7.0",
     "pillow>=10.0.0",
+    "huggingface-hub>=1.7.1",
 ]
