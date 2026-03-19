@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import PowerNorm
 
 from src.checkerboard import sample_checkerboard, FlowMatchingMLP
 from src.paths import ot_path_and_target, diffusion_path_and_target
@@ -51,8 +52,8 @@ def diffusion_path_2d(x1: torch.Tensor, beta_min: float = 0.1, beta_max: float =
 # -- Training ---------------------------------------------------------------
 
 def train(path_type: str, steps: int = 20000, lr: float = 1e-3, batch: int = 4096,
-          device: str = "cpu", sigma_min: float = 0.01):
-    net = FlowMatchingMLP().to(device)
+          device: str = "cpu", sigma_min: float = 0.01, hidden: int = 512, num_layers: int = 5):
+    net = FlowMatchingMLP(hidden=hidden, num_layers=num_layers).to(device)
     opt = torch.optim.Adam(net.parameters(), lr=lr)
 
     for step in range(1, steps + 1):
@@ -101,25 +102,36 @@ def ode_sample(net: nn.Module, n: int, nfe: int, device: str = "cpu"):
 
 # -- Visualisation -----------------------------------------------------------
 
-def plot_density(net, path_type, nfe_list, out_dir, device="cpu"):
-    """Generate samples at different NFEs and plot density (Figure 4 style)."""
-    fig, axes = plt.subplots(1, len(nfe_list), figsize=(4 * len(nfe_list), 4))
-    if len(nfe_list) == 1:
-        axes = [axes]
-
-    for ax, nfe in zip(axes, nfe_list):
-        samples = ode_sample(net, n=20000, nfe=nfe, device=device).cpu().numpy()
-        ax.hist2d(samples[:, 0], samples[:, 1], bins=200, range=[[-5, 5], [-5, 5]],
-                  cmap="inferno", density=True)
-        ax.set_title(f"NFE={nfe}")
-        ax.set_xlim(-5, 5)
-        ax.set_ylim(-5, 5)
-        ax.set_aspect("equal")
-
-    fig.suptitle(f"FM w/ {path_type.upper()} — Generated Density", fontsize=14)
+def _plot_density_panel(pts, out_path, title, bins=200, cmap="magma"):
+    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+    ax.hist2d(
+        pts[:, 0],
+        pts[:, 1],
+        bins=bins,
+        range=[[-5, 5], [-5, 5]],
+        cmap=cmap,
+        density=True,
+        norm=PowerNorm(gamma=0.7),
+        cmin=1e-9,
+    )
+    ax.set_facecolor("white")
+    ax.set_title(title)
+    ax.set_xlim(-5, 5)
+    ax.set_ylim(-5, 5)
+    ax.set_aspect("equal")
+    ax.set_xticks([])
+    ax.set_yticks([])
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, f"checkerboard_density_{path_type}.png"), dpi=150)
+    plt.savefig(out_path, dpi=180)
     plt.close()
+
+
+def plot_density(net, path_type, nfe_list, out_dir, device="cpu"):
+    """Generate one density plot file per NFE."""
+    for nfe in nfe_list:
+        samples = ode_sample(net, n=20000, nfe=nfe, device=device).cpu().numpy()
+        out_path = os.path.join(out_dir, f"checkerboard_density_{path_type}_nfe{nfe}.png")
+        _plot_density_panel(samples, out_path, title=f"NFE={nfe}")
 
 
 def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=200, device="cpu"):
@@ -150,6 +162,7 @@ def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=200, device="cpu"
     ax.set_xlim(-5, 5)
     ax.set_ylim(-5, 5)
     ax.set_aspect("equal")
+    ax.set_facecolor("white")
     ax.set_title(f"FM w/ {path_type.upper()} — Trajectories")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, f"checkerboard_traj_{path_type}.png"), dpi=150)
@@ -157,13 +170,13 @@ def plot_trajectories(net, path_type, out_dir, n_traj=200, nfe=200, device="cpu"
 
 
 def plot_time_snapshots(net, path_type, out_dir, n=20000, nfe=200, device="cpu"):
-    """Show density at t=0, 1/3, 2/3, 1 (Figure 4 style)."""
+    """Show density snapshots as separate files."""
     assert nfe % 2 == 0
     n_steps = nfe // 2
     x = torch.randn(n, 2, device=device)
     dt = 1.0 / n_steps
     snapshots = {0: x.cpu().numpy()}
-    snapshot_times = {int(n_steps / 3): "t=1/3", int(2 * n_steps / 3): "t=2/3", n_steps: "t=1"}
+    snapshot_ids = np.linspace(0, n_steps, 4, dtype=int).tolist()
 
     with torch.no_grad():
         for i in range(n_steps):
@@ -174,25 +187,103 @@ def plot_time_snapshots(net, path_type, out_dir, n=20000, nfe=200, device="cpu")
             t_mid_vec = torch.full((n,), t_mid, device=device)
             k2 = net(x + 0.5 * dt * k1, t_mid_vec)
             x = x + dt * k2
-            if (i + 1) in snapshot_times:
+            if (i + 1) in snapshot_ids:
                 snapshots[i + 1] = x.cpu().numpy()
 
-    times = sorted(snapshots.keys())
-    labels = ["t=0"] + [snapshot_times[t] for t in times[1:]]
+    for snap_idx, step_id in enumerate(snapshot_ids):
+        pts = snapshots[step_id]
+        t_val = step_id / n_steps
+        out_path = os.path.join(out_dir, f"checkerboard_snapshots_{path_type}_t{snap_idx}.png")
+        _plot_density_panel(pts, out_path, title=rf"$t={t_val:.2f}$", bins=200, cmap="magma")
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
-    for ax, t_idx, label in zip(axes, times, labels):
-        pts = snapshots[t_idx]
-        ax.hist2d(pts[:, 0], pts[:, 1], bins=200, range=[[-5, 5], [-5, 5]],
-                  cmap="inferno", density=True)
-        ax.set_title(label)
-        ax.set_xlim(-5, 5)
-        ax.set_ylim(-5, 5)
-        ax.set_aspect("equal")
 
-    fig.suptitle(f"FM w/ {path_type.upper()} — Density Evolution", fontsize=14)
+def _collect_snapshots(net, n=20000, nfe=200, device="cpu", n_panels=10):
+    """Collect point cloud snapshots from t=0 to t=1 for a fixed-step midpoint solve."""
+    assert nfe % 2 == 0
+    n_steps = nfe // 2
+    step_ids = np.linspace(0, n_steps, n_panels, dtype=int).tolist()
+    x = torch.randn(n, 2, device=device)
+    dt = 1.0 / n_steps
+    snapshots = {0: x.cpu().numpy()}
+
+    with torch.no_grad():
+        for i in range(n_steps):
+            t_i = i * dt
+            t_vec = torch.full((n,), t_i, device=device)
+            t_mid = t_i + 0.5 * dt
+            k1 = net(x, t_vec)
+            t_mid_vec = torch.full((n,), t_mid, device=device)
+            k2 = net(x + 0.5 * dt * k1, t_mid_vec)
+            x = x + dt * k2
+            if (i + 1) in step_ids:
+                snapshots[i + 1] = x.cpu().numpy()
+
+    return [snapshots[sid] for sid in step_ids]
+
+
+def plot_figure4_style(nets, out_dir, device="cpu"):
+    """Create a Figure-4-style composite: time trajectories (left) and NFE sweep (right)."""
+    left_cols = 10
+    right_nfes = [2, 4, 8, 10]
+    fig, axes = plt.subplots(
+        2,
+        left_cols + len(right_nfes),
+        figsize=(24, 7),
+        gridspec_kw={"width_ratios": [1] * left_cols + [1.2] * len(right_nfes)},
+    )
+
+    row_info = [("diffusion", "FM w/ Diffusion"), ("ot", "FM w/ OT")]
+    for row, (path_type, row_title) in enumerate(row_info):
+        net = nets[path_type]
+        snapshots = _collect_snapshots(net, n=15000, nfe=200, device=device, n_panels=left_cols)
+        for col in range(left_cols):
+            ax = axes[row, col]
+            pts = snapshots[col]
+            ax.hist2d(
+                pts[:, 0],
+                pts[:, 1],
+                bins=170,
+                range=[[-5, 5], [-5, 5]],
+                cmap="magma",
+                density=True,
+                norm=PowerNorm(gamma=0.7),
+                cmin=1e-9,
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlim(-5, 5)
+            ax.set_ylim(-5, 5)
+            ax.set_aspect("equal")
+            if row == 0:
+                ax.set_title(f"t={col/(left_cols-1):.2f}", fontsize=9)
+
+        for idx, nfe in enumerate(right_nfes):
+            ax = axes[row, left_cols + idx]
+            samples = ode_sample(net, n=20000, nfe=nfe, device=device).cpu().numpy()
+            ax.hist2d(
+                samples[:, 0],
+                samples[:, 1],
+                bins=170,
+                range=[[-5, 5], [-5, 5]],
+                cmap="magma",
+                density=True,
+                norm=PowerNorm(gamma=0.7),
+                cmin=1e-9,
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlim(-5, 5)
+            ax.set_ylim(-5, 5)
+            ax.set_aspect("equal")
+            if row == 1:
+                ax.set_xlabel(f"NFE={nfe}", fontsize=12)
+
+        axes[row, 0].set_ylabel(row_title, fontsize=12)
+
+    fig.suptitle("Checkerboard FM: Diffusion vs OT", fontsize=16)
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, f"checkerboard_snapshots_{path_type}.png"), dpi=150)
+    out_path = os.path.join(out_dir, "checkerboard_figure4_style.png")
+    plt.savefig(out_path, dpi=180)
     plt.close()
 
 
@@ -200,9 +291,12 @@ def plot_time_snapshots(net, path_type, out_dir, n=20000, nfe=200, device="cpu")
 
 def main():
     parser = argparse.ArgumentParser(description="2D checkerboard flow matching experiment")
-    parser.add_argument("--steps", type=int, default=20000)
+    parser.add_argument("--steps", type=int, default=6000)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--batch", type=int, default=4096)
+    parser.add_argument("--batch", type=int, default=1024)
+    parser.add_argument("--hidden", type=int, default=128)
+    parser.add_argument("--num-layers", type=int, default=4)
+    parser.add_argument("--make-composite", action="store_true", help="Also save combined Figure-4-style panel grid.")
     parser.add_argument("--out-dir", type=str, default="./runs/checkerboard")
     parser.add_argument("--device", type=str, default=None)
     args = parser.parse_args()
@@ -210,19 +304,32 @@ def main():
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.out_dir, exist_ok=True)
 
+    nets = {}
     for path_type in ["ot", "diffusion"]:
         print(f"\n{'='*60}")
         print(f"Training FM w/ {path_type.upper()}")
         print(f"{'='*60}")
-        net = train(path_type, steps=args.steps, lr=args.lr, batch=args.batch, device=device)
+        net = train(
+            path_type,
+            steps=args.steps,
+            lr=args.lr,
+            batch=args.batch,
+            device=device,
+            hidden=args.hidden,
+            num_layers=args.num_layers,
+        )
+        nets[path_type] = net
 
         # Save model
         torch.save(net.state_dict(), os.path.join(args.out_dir, f"mlp_{path_type}.pt"))
 
         # Visualisations
-        plot_density(net, path_type, nfe_list=[4, 8, 10, 20, 100], out_dir=args.out_dir, device=device)  # all even
+        plot_density(net, path_type, nfe_list=[2, 4, 8, 10], out_dir=args.out_dir, device=device)
         plot_trajectories(net, path_type, out_dir=args.out_dir, device=device)
         plot_time_snapshots(net, path_type, out_dir=args.out_dir, device=device)
+
+    if args.make_composite:
+        plot_figure4_style(nets, out_dir=args.out_dir, device=device)
 
     print(f"\nAll outputs saved to {args.out_dir}")
 
