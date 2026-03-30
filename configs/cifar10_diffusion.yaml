@@ -1,0 +1,52 @@
+# CIFAR-10 FM w/ Diffusion — Paper Table 3 settings
+dataset: "cifar10"
+data_root: "./data"
+image_size: 32
+batch_size: 256
+effective_batch: 256
+val_size: 5000
+num_workers: 4
+
+# Training: 1000 epochs ≈ 195k steps (50k images / batch 256 ≈ 195 steps/epoch)
+total_steps: 195000
+log_every: 500
+val_every: 5000
+ckpt_every: 25000
+
+# Optimization
+lr: 0.0005
+warmup_steps: 45000
+poly_power: 2.0
+weight_decay: 0.0
+
+# Path
+path_type: "diffusion"
+beta_min: 0.1
+beta_max: 20.0
+eps_t: 0.00001
+
+# Architecture (same as OT)
+base_ch: 256
+channel_mults: [1, 2, 2, 2]
+num_res_blocks: 2
+attn_resolutions: [16]
+num_heads: 4
+dropout: 0.0
+
+# Precision (paper uses FP32 for CIFAR-10)
+use_amp: false
+ema: true
+ema_decay: 0.9999
+
+# Evaluation during training
+fid_every: 25000
+fid_n_samples: 10000
+nfe_every: 25000
+nfe_n_samples: 16
+
+# Logging
+use_wandb: true
+wandb_project: "mlmi4-flow-matching"
+wandb_tags: ["cifar10", "diffusion"]
+
+out_dir: "./runs/cifar10_diffusion"

@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from src.paths import ot_path_and_target
 from src.config import TrainConfig
 
 
@@ -43,11 +42,11 @@ def lr_at_step(cfg: TrainConfig, step: int) -> float:
 
 
 @torch.no_grad()
-def evaluate_loss(net: nn.Module, loader, device: str, path_type: str, 
-                   sigma_min: float, diffusion_s: float, max_batches: int = 20) -> float:
+def evaluate_loss(net: nn.Module, loader, device: str, cfg: TrainConfig,
+                  max_batches: int = 20) -> float:
     """Evaluate model loss on validation set."""
     from src.paths import get_path_and_target
-    
+
     net.eval()
     losses = []
     it = iter(loader)
@@ -57,8 +56,10 @@ def evaluate_loss(net: nn.Module, loader, device: str, path_type: str,
         except StopIteration:
             break
         x1 = x1.to(device)
-        t, x_t, u_t = get_path_and_target(x1, path_type=path_type, 
-                                           sigma_min=sigma_min, s=diffusion_s)
+        t, x_t, u_t = get_path_and_target(
+            x1, path_type=cfg.path_type, sigma_min=cfg.sigma_min,
+            beta_min=cfg.beta_min, beta_max=cfg.beta_max, eps_t=cfg.eps_t,
+        )
         v = net(x_t, t)
         loss = (v - u_t).pow(2).mean()
         losses.append(loss.item())
@@ -66,12 +67,15 @@ def evaluate_loss(net: nn.Module, loader, device: str, path_type: str,
     return float(sum(losses) / max(1, len(losses)))
 
 
-def save_ckpt(path: str, net: nn.Module, opt: torch.optim.Optimizer, step: int, ema: EMA | None):
-    """Save training checkpoint."""
+def save_ckpt(path: str, net: nn.Module, opt: torch.optim.Optimizer, step: int,
+              ema: EMA | None, arch: dict | None = None, image_size: int = 32):
+    """Save training checkpoint with architecture config for portable loading."""
     payload = {
         "step": step,
         "model": net.state_dict(),
         "opt": opt.state_dict(),
         "ema": (ema.shadow if ema is not None else None),
+        "arch": arch or {},
+        "image_size": image_size,
     }
     torch.save(payload, path)

@@ -35,7 +35,9 @@ class TrainConfig:
     # FM / OT path
     path_type: str = "ot"            # "ot" or "diffusion"
     sigma_min: float = 0.01            # for OT path
-    diffusion_s: float = 0.008         # for diffusion path
+    beta_min: float = 0.1             # for VP diffusion path
+    beta_max: float = 20.0            # for VP diffusion path
+    eps_t: float = 1e-5               # time clipping for diffusion path
 
     # model
     base_ch: int = 256
@@ -44,6 +46,12 @@ class TrainConfig:
     attn_resolutions: tuple[int, ...] = (16,)
     num_heads: int = 4
     dropout: float = 0.0
+
+    # Evaluation during training (Figures 5, 10)
+    fid_every: int = 0               # compute FID every N steps (0 = disabled)
+    fid_n_samples: int = 10000       # samples for training-time FID (fewer for speed)
+    nfe_every: int = 0               # track adaptive NFE every N steps (0 = disabled)
+    nfe_n_samples: int = 16          # samples for NFE measurement
 
     # AMP / EMA
     use_amp: bool = True
@@ -58,6 +66,7 @@ class TrainConfig:
     wandb_tags: tuple[str, ...] | None = None
 
     # misc
+    resume: bool = False
     out_dir: str = "./runs/fm_ot_cifar10"
 
 
@@ -149,8 +158,12 @@ def parse_args() -> argparse.Namespace:
                         help='Path type: "ot" or "diffusion"')
     parser.add_argument('--sigma-min', type=float, default=None,
                         help='Minimum sigma for OT path')
-    parser.add_argument('--diffusion-s', type=float, default=None,
-                        help='Schedule parameter s for diffusion path')
+    parser.add_argument('--beta-min', type=float, default=None,
+                        help='VP diffusion beta_min (default: 0.1)')
+    parser.add_argument('--beta-max', type=float, default=None,
+                        help='VP diffusion beta_max (default: 20.0)')
+    parser.add_argument('--eps-t', type=float, default=None,
+                        help='Time clipping for diffusion path (default: 1e-5)')
     
     # Model
     parser.add_argument('--base-ch', type=int, default=None,
@@ -162,6 +175,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--dropout', type=float, default=None,
                         help='Dropout rate')
     
+    # Evaluation during training
+    parser.add_argument('--fid-every', type=int, default=None,
+                        help='Compute FID every N steps (0 = disabled)')
+    parser.add_argument('--fid-n-samples', type=int, default=None,
+                        help='Samples for training-time FID')
+    parser.add_argument('--nfe-every', type=int, default=None,
+                        help='Track adaptive NFE every N steps (0 = disabled)')
+    parser.add_argument('--nfe-n-samples', type=int, default=None,
+                        help='Samples for NFE measurement')
+
     # AMP / EMA
     parser.add_argument('--use-amp', action='store_true', default=None,
                         help='Use automatic mixed precision')
@@ -189,6 +212,8 @@ def parse_args() -> argparse.Namespace:
                         help='W&B run tags')
     
     # Misc
+    parser.add_argument('--resume', action='store_true', default=None,
+                        help='Resume from latest checkpoint in out_dir')
     parser.add_argument('--out-dir', type=str, default=None,
                         help='Output directory')
     

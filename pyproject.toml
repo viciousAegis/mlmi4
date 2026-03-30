@@ -12,4 +12,8 @@ dependencies = [
     "torchvision>=0.25.0",
     "pyyaml>=6.0",
     "wandb>=0.16.0",
+    "pytorch-fid>=0.3.0",
+    "matplotlib>=3.7.0",
+    "pillow>=10.0.0",
+    "huggingface-hub>=1.7.1",
 ]
