@@ -137,6 +137,7 @@ class UNetCIFAR(nn.Module):
         attn_resolutions=(16,),
         num_heads: int = 4,
         dropout: float = 0.0,
+        image_size: int = 32,
     ):
         super().__init__()
         self.attn_resolutions = set(attn_resolutions)
@@ -155,7 +156,7 @@ class UNetCIFAR(nn.Module):
         self.downsamples = nn.ModuleList()
 
         ch = base_ch
-        resolution = 32
+        resolution = image_size
         skip_chs: list[int] = []
 
         for i, mult in enumerate(channel_mults):
@@ -164,7 +165,8 @@ class UNetCIFAR(nn.Module):
             for _ in range(num_res_blocks):
                 blocks.append(ResBlock(ch, outc, t_ch, dropout))
                 ch = outc
-                if resolution in self.attn_resolutions:
+                has_attn = resolution in self.attn_resolutions
+                if has_attn:
                     blocks.append(AttentionBlock(ch, num_heads=num_heads))
                 skip_chs.append(ch)
             self.down_levels.append(blocks)
@@ -214,14 +216,22 @@ class UNetCIFAR(nn.Module):
 
         skips = []
         for level, down in zip(self.down_levels, self.downsamples):
-            for block in level:
+            blocks = list(level)
+            i = 0
+            while i < len(blocks):
+                block = blocks[i]
                 if isinstance(block, ResBlock):
                     h = block(h, temb)
+                    # Check if next block is AttentionBlock (same group)
+                    if i + 1 < len(blocks) and isinstance(blocks[i + 1], AttentionBlock):
+                        h = blocks[i + 1](h)
+                        i += 2
+                    else:
+                        i += 1
+                    skips.append(h)  # store after full group (ResBlock + optional Attention)
                 else:
                     h = block(h)
-                # store after every block (matches skip list we built)
-                if isinstance(block, ResBlock):
-                    skips.append(h)
+                    i += 1
             h = down(h)
 
         # mid
@@ -231,12 +241,22 @@ class UNetCIFAR(nn.Module):
 
         # up
         for level, up in zip(self.up_levels, self.upsamples):
-            for block in level:
+            blocks = list(level)
+            i = 0
+            while i < len(blocks):
+                block = blocks[i]
                 if isinstance(block, ResBlock):
                     h = torch.cat([h, skips.pop()], dim=1)
                     h = block(h, temb)
+                    # Check if next block is AttentionBlock (same group)
+                    if i + 1 < len(blocks) and isinstance(blocks[i + 1], AttentionBlock):
+                        h = blocks[i + 1](h)
+                        i += 2
+                    else:
+                        i += 1
                 else:
                     h = block(h)
+                    i += 1
             h = up(h)
 
         return self.out_conv(F.silu(self.out_norm(h)))

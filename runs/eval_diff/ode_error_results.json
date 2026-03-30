@@ -1,0 +1,87 @@
+{
+  "euler_nfe10": {
+    "solver": "euler",
+    "nfe": 10,
+    "mse": 0.006584379356354475
+  },
+  "midpoint_nfe10": {
+    "solver": "midpoint",
+    "nfe": 10,
+    "mse": 0.0013550431467592716
+  },
+  "euler_nfe20": {
+    "solver": "euler",
+    "nfe": 20,
+    "mse": 0.0016752667725086212
+  },
+  "midpoint_nfe20": {
+    "solver": "midpoint",
+    "nfe": 20,
+    "mse": 0.00024429213954135776
+  },
+  "rk4_nfe20": {
+    "solver": "rk4",
+    "nfe": 20,
+    "mse": 0.0002480403345543891
+  },
+  "euler_nfe40": {
+    "solver": "euler",
+    "nfe": 40,
+    "mse": 0.00043892351095564663
+  },
+  "midpoint_nfe40": {
+    "solver": "midpoint",
+    "nfe": 40,
+    "mse": 4.783988697454333e-05
+  },
+  "rk4_nfe40": {
+    "solver": "rk4",
+    "nfe": 40,
+    "mse": 0.0001258195552509278
+  },
+  "euler_nfe60": {
+    "solver": "euler",
+    "nfe": 60,
+    "mse": 0.0002065923617919907
+  },
+  "midpoint_nfe60": {
+    "solver": "midpoint",
+    "nfe": 60,
+    "mse": 2.229708479717374e-05
+  },
+  "rk4_nfe60": {
+    "solver": "rk4",
+    "nfe": 60,
+    "mse": 4.7816254664212465e-05
+  },
+  "euler_nfe80": {
+    "solver": "euler",
+    "nfe": 80,
+    "mse": 0.00012353267811704427
+  },
+  "midpoint_nfe80": {
+    "solver": "midpoint",
+    "nfe": 80,
+    "mse": 1.4880002709105611e-05
+  },
+  "rk4_nfe80": {
+    "solver": "rk4",
+    "nfe": 80,
+    "mse": 2.5325669412268326e-05
+  },
+  "euler_nfe100": {
+    "solver": "euler",
+    "nfe": 100,
+    "mse": 8.417631761403754e-05
+  },
+  "midpoint_nfe100": {
+    "solver": "midpoint",
+    "nfe": 100,
+    "mse": 1.1803780580521561e-05
+  },
+  "rk4_nfe100": {
+    "solver": "rk4",
+    "nfe": 100,
+    "mse": 1.751121089910157e-05
+  }
+}
